@@ -55,8 +55,7 @@ end
 % A global variable sets the level of log display. The global variable
 % is used in logmsg(), which does the log display.
 if ~isfield(Opt,'Verbosity'), Opt.Verbosity = 0; end
-global EasySpinLogLevel
-EasySpinLogLevel = Opt.Verbosity;
+logmsg(Opt.Verbosity);
 
 % Process Opt.separate
 if ~isfield(Opt,'separate'), Opt.separate = ''; end
@@ -116,8 +115,8 @@ end
 % Single-isotopologue simulation
 %===============================================================================
 
-logmsg(1,['=begin=saffron====' char(datetime) '=================']);
-logmsg(2,'  log level %d',EasySpinLogLevel);
+logmsg(1,'=begin=saffron====%s=================',char(datetime));
+logmsg(2,'  log level %d',logmsg);
 logmsg(1,'-general-----------------------------------------------');
 
 
@@ -125,12 +124,16 @@ logmsg(1,'-general-----------------------------------------------');
 % Spin system structure
 %===============================================================================
 [Sys,err] = validatespinsys(Sys);
+
 error(err);
 if Sys.MO_present
   error('saffron does not support Sys.Ham* parameters.');
 end
 if any(Sys.L(:))
   error('saffron does not support Sys.L.');
+end
+if any(Sys.gStrain) || any(Sys.AStrain) || any(Sys.DStrain)
+  error('saffron does not support Sys.gStrain, Sys.AStrain, or Sys.DStrain.');
 end
 
 % Error on spidyan-specific fields
@@ -445,7 +448,7 @@ if fastSimulationMode
     if ~isfield(Exp,'dt')
       error('Exp.dt is missing.');
     end
-    if numel(Exp.dt)==1
+    if isscalar(Exp.dt)
       Exp.dt = Exp.dt*ones(1,nDimensions);
     elseif numel(Exp.dt)~=nDimensions
       error('Exp.dt needs either 1 or %d elements, one per dimension. You gave %d.',nDimensions,numel(Exp.dt));
@@ -464,7 +467,7 @@ if fastSimulationMode
       end
     end
   end
-  if numel(Exp.nPoints)==1
+  if isscalar(Exp.nPoints)
     Exp.nPoints = Exp.nPoints*ones(1,nDimensions);
   elseif numel(Exp.nPoints)~=nDimensions
     error('Exp.nPoints needs either 1 or %d elements, one per dimension. You gave %d.',nDimensions,numel(Exp.nPoints));
@@ -605,7 +608,7 @@ if fastSimulationMode
     idxIncL = idxFreeL(:,Exp.Inc~=0);
     idxIncR = idxFreeR(:,Exp.Inc~=0);
 
-    if EasySpinLogLevel>0
+    if logmsg>0
       logmsg(1,'  Pathways and prefactors:');
       Str = 'ab+-';
       for iPathway = 1:nPathways
@@ -726,7 +729,7 @@ if fastSimulationMode
       % 0 = sum-over-transitions, adjacent level population swap (wrong for >1 nucleus)
       % 1 = sum-over-transitions, bandwidth-filtered Iy pi pulse on all nuclei
       % 2 = frequency sweep, bandwidth-filtered Iy pi pulse on all nuclei
-      if numel(shfNuclei)==1 || Opt.ProductRule
+      if isscalar(shfNuclei) || Opt.ProductRule
         Opt.EndorMethod = 0;
       else
         Opt.EndorMethod = 1;
@@ -1058,7 +1061,7 @@ if fastSimulationMode
 
     else
 
-      % transition selection
+      % Transition selection
       %------------------------------------------------------------
       muzL = zLab_M(1)*mux + zLab_M(2)*muy + zLab_M(3)*muz;
       H = H0 - Exp.Field*muzL;
@@ -1083,15 +1086,20 @@ if fastSimulationMode
 
       % Remove transitions that are not wanted by the user
       if ~isempty(Opt.Transitions)
-        rmvTransition = ones(size(H));
+        nStates = size(H,1);
+        if any(Opt.Transitions(:)>nStates)
+          error('Opt.Transitions out of range - only values between and %d are valid.',nStates);
+        end
+        rmvTransition = true(size(H));
         for t = 1:size(Opt.Transitions,1)
           tr = Opt.Transitions(t,:);
-          rmvTransition(tr(1),tr(2)) = 0;
-          rmvTransition(tr(2),tr(1)) = 0;
+          rmvTransition(tr(1),tr(2)) = false;
+          rmvTransition(tr(2),tr(1)) = false;
         end
-        SyLab(rmvTransition~=0) = 0;
+        SyLab(rmvTransition) = 0;
       end
 
+      % Build transition list
       [v,u,OriSelWeight] = find(tril(SyLab,-1));
       Transitions = [u,v];
       nTransitions = size(Transitions,1);
@@ -1101,7 +1109,7 @@ if fastSimulationMode
         continue
       end
 
-      % computation of <S> for all manifolds involved
+      % Compute <S> for all manifolds involved
       %------------------------------------------------------------
       ManifoldsInvolved = zeros(1,length(Sx));
       ManifoldsInvolved(u) = 1;
@@ -1234,16 +1242,16 @@ if fastSimulationMode
                 if increments(iInt)~=0
                   if iBlock==0
                     G = Left*Right;
-                    if numel(G)==1
+                    if isscalar(G)
                       G = G*eyeN;
                     end
                   else
-                    if numel(Left)==1
+                    if isscalar(Left)
                       BlockL{iBlock} = eyeN;
                     else
                       BlockL{iBlock} = Left;
                     end
-                    if numel(Right)==1
+                    if isscalar(Right)
                       BlockR{iBlock} = eyeN;
                     else
                       BlockR{iBlock} = Right;
@@ -1384,7 +1392,9 @@ if fastSimulationMode
                     % Loop over all nuclear transition and apply
                     % bandwidth-limited rf pulse operator. The excitation
                     % bandwidth is Gaussian.
-                    [i,j] = find(triu(ones(nNucStates),1));
+                    ij = nchoosek(1:nNucStates,2);
+                    i = ij(:,1);
+                    j = ij(:,2);
                     for iNucTrans = 1:numel(i)
                       % Calculate propagators for narrow-band Gaussian
                       % pulses at the nuclear transition frequency i->j
@@ -1720,7 +1730,6 @@ if fastSimulationMode
 
   end
 
-
   %===============================================================
   % TD data processing
   %===============================================================
@@ -1728,9 +1737,9 @@ if fastSimulationMode
   logmsg(1,'Data processing...');
   info = struct;
   if ~isENDOR
-    switch nDimensions
-      case 1
-        if processData
+    if processData
+      switch nDimensions
+        case 1
 
           % Decay correction
           if decayAdded
@@ -1753,24 +1762,27 @@ if fastSimulationMode
           fd = fft(tdx,Opt.ZeroFillFactor*numel(tdx));
           fd = fftshift(fd);
           f1 = fdaxis(Exp.dt,length(fd));
-        end
 
-      case 2
-        if processData
+        case 2
+
+          % Baseline correction
           if decayAdded
-            tdx = basecorr(td,[],[2 2]);
+            order = 2;
           else
-            tdx = basecorr(td,[],[0 0]);
+            order = 0;
           end
+          tdx = basecorr(td,1,order);
+          tdx = basecorr(tdx,2,order);
 
+          % Apodization
           w1 = apowin(Opt.Window,Exp.nPoints(1));
           w2 = apowin(Opt.Window,Exp.nPoints(2));
 
+          % Fourier transformation
           fd = fftshift(fftn(tdx.*(w1*w2.'),Opt.ZeroFillFactor*Exp.nPoints));
           f1 = fdaxis(Exp.dt(1),size(fd,1));
           f2 = fdaxis(Exp.dt(2),size(fd,2));
-        end
-
+      end
     end
 
     if max(abs(fd))<1e-300
@@ -1986,7 +1998,7 @@ else  % if fastSimulationMode
         nParameters = size(Exp.(Dimension_),1);
         axes_ = zeros(nParameters,Exp.nPoints(iDim));
         for iParameter = 1: nParameters
-          if length(Exp.(Dimension_){iParameter,2}) == 1
+          if isscalar(Exp.(Dimension_){iParameter,2})
             axes_(iParameter,:) = Exp.(Dimension_){iParameter,2}*(0:Exp.nPoints(iDim)-1);
           else
             axes_(iParameter,:) = 1:Exp.nPoints(iDim);
@@ -2003,7 +2015,7 @@ else  % if fastSimulationMode
     x{nIndirectDimensions+1} = timeAxis;
   end
 
-  if iscell(x) && numel(x)==1
+  if iscell(x) && isscalar(x)
     x = x{1};
   end
 
@@ -2024,11 +2036,10 @@ end
 %===============================================================
 endTime = datetime;
 elapsedtime = endTime-startTime;
+elapsedtime.Format = 'hh:mm:ss.SSS';
 logmsg(1,'saffron took %s',elapsedtime);
 
 logmsg(1,'=end=saffron======%s=================\n',datetime);
-
-clear global EasySpinLogLevel
 
 end
 %===============================================================================
@@ -2070,7 +2081,7 @@ Detector = reshape(D.',1,NN);
 E = {Ea,Eb};
 
 % Pre-allocate signal array
-if numel(nPoints)==1
+if isscalar(nPoints)
   Signal = zeros(1,nPoints);
 else
   Signal = zeros(nPoints);
@@ -2315,22 +2326,24 @@ else
       xf = info.f(idx);
       if plotQuadratureSignal
         h = plot(xf,abs(info.fd(idx)),xf,real(info.fd(idx)),xf,imag(info.fd(idx)));
-        legend('abs','in-phase','quadrature');
-        legend boxoff
+        Leg = legend('abs','in-phase','quadrature');
       else
         h = plot(xf,abs(info.fd(idx)),xf,real(info.fd(idx)));
-        legend('abs','in-phase');
+        Leg = legend('abs','in-phase');
         legend boxoff
       end
+      Leg.AutoUpdate = 'off';
+      legend boxoff
       axis tight
       xlim([0 max(info.f)]);
       xlabel('\nu (MHz)');
       ylabel('intensity (arb.u.)');
       title('Spectrum');
+
       if isfield(Sys,'Nucs')
         nuI = larmorfrq(Sys.Nucs,Exp.Field);
         for k = 1:numel(nuI)
-          line([1 1]*abs(nuI(k)),ylim,'Color',[1 1 1]*0.8);
+          xline(abs(nuI(k)),'Color',[1 1 1]*0.8);
         end
         h = get(gca,'Children');
       end

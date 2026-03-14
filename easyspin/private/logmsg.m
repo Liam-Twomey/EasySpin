@@ -1,42 +1,87 @@
-% logmsg    EasySpin logging 
+% logmsg    EasySpin logging function
 %
-%   logmsg(MsgLevel,varargin)
+%   logmsg(logLevel)             % set log level
+%   logLevel = logmsg            % get log level
 %
-%   Prints log messages to the screen, if the global EasySpinLogLevel
-%   allows. varargin is passed on to fprintf.
+%   logmsg(msgLevel,varargin)    % log message
+%
+%   Prints log messages to the command window if the log level of the message
+%   is lower or equal to the set log level. varargin is passed on to fprintf.
 %
 %   Log levels:
-%     0  no messages
-%     1  normal messages
-%     2  detailed messages
-%     3  loop counters
-%     4  messages from inside loops (debug level)
-%
-%   A message is only displayed if MsgLevel is smaller or equal to 
-%   EasySpinLogLevel.
+%     0  (off) no messages
+%     1  (info) normal messages
+%     2  (detail) detailed messages
+%     3  (debug) debug messages
+%     4  (trace) very detailed debug messages
 
-function logmsg(varargin)
+function varargout = logmsg(varargin)
 
-% Connect to global variable
-global EasySpinLogLevel
-
-if isempty(EasySpinLogLevel), return; end
-
-MsgLevel = varargin{1};
-
-if numel(MsgLevel)~=1 || ~isnumeric(MsgLevel) || mod(MsgLevel,1)~=0 || MsgLevel<0
-  error('The first input to logmsg must be a non-negative integer.');
+% Store log level in persistent variable
+persistent logLevel
+if isempty(logLevel)
+  logLevel = 0;  % default
 end
 
-% Don't display if message level is above loglevel
-if MsgLevel>EasySpinLogLevel
+% Get log level
+if nargin==0
+  varargout = {logLevel};
   return
 end
 
-% Display message
-if nargin>1
-  fprintf(varargin{2:end});
-  fprintf('\n');
-else
-  error('At least two input arguments expected.');
+% Set log level
+if nargin==1
+  newLogLevel = varargin{1};
+  if isValidLogLevel(newLogLevel)
+    logLevel = newLogLevel;
+    return
+  else
+    error('The log level must be 0, 1, 2, 3 or 4.');
+  end
+end
+
+msgLevel = varargin{1};
+args = varargin(2:end);
+
+if ~isValidLogLevel(msgLevel)
+  error('The message log level must be 0, 1, 2, 3 or 4.');
+end
+
+% Don't display if message level is above loglevel
+if msgLevel>logLevel
+  return
+end
+
+% Print message
+printMessage(args{:});
+
+end
+
+%===============================================================================
+function tf = isValidLogLevel(lev)
+tf = isnumeric(lev) && isscalar(lev) && ismember(lev,0:4);
+end
+
+%===============================================================================
+% Print log message
+function printMessage(varargin)
+
+% Print function name and line number
+printLocation = false;
+if printLocation
+  db = dbstack;
+  if numel(db)>=3
+    funcName = db(3).name;
+    lineNo = db(3).line;
+  else
+    funcName = '...';
+    lineNo = '';
+  end
+  fprintf('[%s:%d] ',funcName,lineNo);
+end
+
+% Print message
+fprintf(varargin{:});
+fprintf('\n');
+
 end

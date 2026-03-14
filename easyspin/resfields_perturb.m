@@ -11,7 +11,7 @@
 %
 %   Input:
 %    Sys: spin system structure
-%    Exp: experimental parameter settings
+%    Exp: experimental parameters
 %      mwFreq              microwave frequency, in GHz
 %      Range               field sweep range, [Bmin Bmax], in mT
 %      CenterField         field sweep range, [center sweep], in mT
@@ -55,8 +55,7 @@ end
 % A global variable sets the level of log display. The global variable
 % is used in logmsg(), which does the log display.
 if ~isfield(Opt,'Verbosity'), Opt.Verbosity = 0; end
-global EasySpinLogLevel
-EasySpinLogLevel = Opt.Verbosity;
+logmsg(Opt.Verbosity);
 
 % Spin system
 %------------------------------------------------------
@@ -575,8 +574,13 @@ else
     lwE = bsxfun(@times,lwE,MHz2mT);
     Wid2_DE = repmat(lwD.^2+lwE.^2,nNucTrans,1);
     Wid = sqrt(Wid2_DE + Wid.^2);
+
+  elseif Wid>0  % HStrain
+
+  else
+    Wid = [];
   end
-  
+
   % Transitions
   %-------------------------------------------------------------------
   Transitions = [];
@@ -594,7 +598,7 @@ end
 
 % Reshape arrays in the case of crystals with site splitting
 d = dbstack;
-pepperCall = numel(d)>2 && strcmp(d(2).name,'pepper');
+pepperCall = numel(d)>1 && strcmp(d(2).name,'pepper');
 if nSites>1 && ~pepperCall
   siz = [nTransitions*nSites, numel(B)/nTransitions/nSites];
   B = reshape(B,siz);

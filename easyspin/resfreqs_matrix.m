@@ -11,7 +11,7 @@
 %
 %   Input:
 %    Sys: spin system structure
-%    Exp: experimental parameter settings
+%    Exp: experimental parameters
 %      Field               static field, in mT
 %      Range               frequency sweep range, [numin numax], in GHz
 %      CenterField         frequency sweep range, [center sweep], in GHz
@@ -75,8 +75,7 @@ end
 % A global variable sets the level of log display. The global variable
 % is used in logmsg(), which does the log display.
 if ~isfield(Opt,'Verbosity'), Opt.Verbosity = 0; end
-global EasySpinLogLevel;
-EasySpinLogLevel = Opt.Verbosity;
+logmsg(Opt.Verbosity);
 
 % Process Spin system.
 %---------------------------------------------------------------------
@@ -244,7 +243,7 @@ if any(~isreal(t_)) || numel(t_)>2 || any(t_<0) || any(t_>=1)
   error('Options.Threshold must be a number >=0 and <1.');
 end
 preSelectionThreshold = Opt.Threshold(1);
-if numel(Opt.Threshold)==1
+if isscalar(Opt.Threshold)
   postSelectionThreshold = preSelectionThreshold;
 else
   postSelectionThreshold = Opt.Threshold(2);
@@ -285,7 +284,7 @@ if Sys.nNuclei>=1 && Opt.Hybrid
   else
     str_ = sprintf('%d ',idxPerturbNuclei);
   end
-  logmsg(1,['  nuclei with first-order perturbation treatment: ' str_]);
+  logmsg(1,'  nuclei with first-order perturbation treatment: %s',str_);
   
   % Remove perturbational nuclei from core system
   CoreSys = nucspinrmv(Sys,idxPerturbNuclei);
@@ -487,8 +486,7 @@ if UserTransitions
     if strcmp(Opt.Transitions,'all')
       nSStates = prod(2*CoreSys.S+1)*prod(2*CoreSys.L+1);
       logmsg(1,'  using all %d transitions',nSStates*(nSStates-1)/2);
-      [u,v] = find(triu(ones(nSStates),1));
-      Transitions = sortrows([u,v]);
+      Transitions = nchoosek(1:nSStates,2);
     else
       error('Options.Transitions must be ''all'' or a nx2 array of enery level indices.');
     end
@@ -504,8 +502,7 @@ if UserTransitions
   
 else
   % Automatic compilation: include all level pairs
-  [v,u] = find(tril(ones(nCore),-1));
-  Transitions = [u v];
+  Transitions = nchoosek(1:nCore,2);
 end
 
 % Terminate if the transition list is empty.
@@ -623,7 +620,7 @@ else
 end
 
 for iOri = 1:nOrientations
-  if EasySpinLogLevel>=1
+  if logmsg>=1
     if iOri>1
       remainingTime = (cputime-startTime)/(iOri-1)*(nOrientations-iOri+1);
       backspace = repmat(sprintf('\b'),1,numel(logstr));
@@ -632,7 +629,7 @@ for iOri = 1:nOrientations
       seconds = remainingTime - 3600*hours - 60*minutes;
       logstr = sprintf('  %d/%d orientations, remaining time %02d:%02d:%0.1f\n', ...
         iOri, nOrientations, hours, minutes, seconds);
-      if EasySpinLogLevel==1, fprintf(backspace); end
+      if logmsg==1, fprintf(backspace); end
       fprintf(logstr);
     else
       if nOrientations>1
@@ -876,7 +873,7 @@ else
   logmsg(2,'  ## no intensities computed, no intensity post-selection');
 end
 
-if EasySpinLogLevel>=2
+if logmsg>=2
   partlyNaN = any(isnan(Pdat),2);
   nChopped = sum(partlyNaN);
   if nChopped>0
@@ -1014,23 +1011,32 @@ if computeStrains && numel(Wdat)>0
   logmsg(2,'  ## widths min %g mT, max %g mT',min(Wdat(:)),max(Wdat(:)));
 end
 
-% Reshape arrays in the case of crystals with site splitting
+% Reshape arrays in the case of crystals with multiple sites
 d = dbstack;
-pepperCall = numel(d)>2 && strcmp(d(2).name,'pepper');
-if (nSites>1) && ~pepperCall
-  siz = [nTransitions*nSites, numel(Pdat)/nTransitions/nSites];
-  Pdat = reshape(Pdat,siz);
-  if ~isempty(Idat), Idat = reshape(Idat,siz); end
-  if ~isempty(Wdat), Wdat = reshape(Wdat,siz); end
+pepperCall = numel(d)>1 && strcmp(d(2).name,'pepper');
+if ~pepperCall
+  if nSites>1
+    % Pdat, Idat, Wdat have size [nTransitions, nSites*nOrientations]
+    % Resize to [nTransitions*nSites, nOrientations]
+    siz = [nTransitions*nSites, numel(Pdat)/nTransitions/nSites];
+    Pdat = reshape(Pdat,siz);
+    if ~isempty(Idat), Idat = reshape(Idat,siz); end
+    if ~isempty(Wdat), Wdat = reshape(Wdat,siz); end
+  end
 end
 
-% Sort Output
-[Transitions, I] = sortrows(Transitions);
-Pdat = Pdat(I,:);
-if ~isempty(Idat), Idat = Idat(I,:); end
-if ~isempty(Wdat), Wdat = Wdat(I,:); end
+% Sort transitions lexicograpically (for each crystal site)
+[Transitions, idx] = sortrows(Transitions);
+if ~pepperCall
+  if nSites>1
+    idx = idx(:) + (0:nSites-1)*nTransitions;
+  end
+end
+Pdat = Pdat(idx,:);
+if ~isempty(Idat), Idat = Idat(idx,:); end
+if ~isempty(Wdat), Wdat = Wdat(idx,:); end
 
-% Arrange the output.
+% Arrange the output
 Output = {Pdat,Idat,Wdat,Transitions};
 varargout = Output(1:max(nargout,1));
 

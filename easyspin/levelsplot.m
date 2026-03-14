@@ -22,7 +22,10 @@
 %                      value).
 %      StickSpectrum   true/false (default false). Plot stick spectrum underneath
 %                      Zeeman diagram. Default is false.
-%
+%      ColorMap        Name of colormap for slope colors. E.g.: jet (Default = parula)
+%      LineWidth       Line width for the Zeeman lines (as plotted, no hover)
+%      TransLineWidth  Line width for the transition lines (as plotted no hover)
+%      Offset          Apply vertical offset to all energies (in MHz).
 %  If mwFreq is given, resonances are drawn. Red lines indicate allowed
 %  transitions, gray lines forbidden ones. Hovering with the cursor over
 %  the lines displays intensity information.
@@ -92,6 +95,15 @@ end
 if ~isfield(Opt,'StickSpectrum')
   Opt.StickSpectrum = false;
 end
+if ~isfield(Opt,'LineWidth')
+  Opt.LineWidth = 0.5;
+end
+if ~isfield(Opt,'TransLineWidth')
+  Opt.TransLineWidth = 0.5;
+end
+if ~isfield(Opt,'Offset')
+  Opt.Offset = 0;
+end
 
 % Parse Ori (second input argument)
 %-------------------------------------------------------------------------------
@@ -152,6 +164,7 @@ end
 % Calculate energy levels
 %-------------------------------------------------------------------------------
 E_MHz = levels(Sys,[phi theta chi],Bvec);
+E_MHz = E_MHz - Opt.Offset;
 E = unit_convert(E_MHz,Opt.Units);
 nLevels = size(E,2);
 
@@ -192,11 +205,14 @@ linecolor = [0 0.4470 0.7410];
 if Opt.SlopeColor
   for iLevel = nLevels:-1:1
     col = abs(deriv(E(:,iLevel)));
-    hLevels(iLevel) = patch([Bvec(:)*Bscale; NaN],[E(:,iLevel); NaN],[col; NaN],'EdgeColor','interp');
+    hLevels(iLevel) = patch([Bvec(:)*Bscale; NaN],[E(:,iLevel); NaN],[col; NaN],'EdgeColor','interp','LineWidth',Opt.LineWidth);
   end
-  colormap(flipud(parula));
+  if ~isfield(Opt,'ColorMap')
+    Opt.ColorMap = parula;
+  end
+  colormap(flipud(Opt.ColorMap));
 else
-  hLevels = plot(Bvec*Bscale,E*Escale,'b');
+  hLevels = plot(Bvec*Bscale,E*Escale,'b','LineWidth',Opt.LineWidth);
   set(hLevels,'Color',linecolor);
 end
 for iLevel = 1:nLevels
@@ -250,9 +266,10 @@ if computeResonances
 
       H = H0 - muzL*resonFields(iF);
       E_MHz = sort(eig(H));
+      E_MHz = E_MHz - Opt.Offset;
       E = unit_convert(E_MHz,Opt.Units);
 
-      h = line(resonFields(iF)*[1 1]*Bscale,Escale*E(Transitions(iF,:)),'Tag','transition','LineWidth',1);
+      h = line(resonFields(iF)*[1 1]*Bscale,Escale*E(Transitions(iF,:)),'Tag','transition','LineWidth',Opt.TransLineWidth);
       h.UserData = [Transitions(iF,:) resonFields(iF) absintensity(iF)];
       transitionColor = absintensity(iF)*Opt.AllowedColor + (1-absintensity(iF))*Opt.ForbiddenColor;
       h.Color = transitionColor;
@@ -285,7 +302,7 @@ if computeResonances
     % no resonance fields
     xl = xlim;
     yl = ylim;
-    h = text(xl(1),yl(1),' no resonances in field range');
+    h = text(xl(1),yl(1),' no EPR resonances in field range');
     set(h,'Color','r','VerticalAl','bottom');
   end
 end
@@ -363,7 +380,7 @@ hObj = hittest(); % hittest() is an undocumented built-in MATLAB function :-/
 hParent = hObj.Parent;  % this is either the axes or the figure
 
 % Remove any previous thick lines
-if ~isempty(hPrevLine) && ~strcmp(hPrevLine.Tag,'line')
+if ~isempty(hPrevLine) && isvalid(hPrevLine) && ~strcmp(hPrevLine.Tag,'line')
   set(hPrevLine,'LineWidth',defaultLineWidth);
   hPrevLine = [];
 end

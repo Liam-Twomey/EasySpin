@@ -53,8 +53,7 @@ if isempty(Opt), Opt = struct; end
 % A global variable sets the level of log display. The global variable
 % is used in logmsg(), which does the log display.
 if ~isfield(Opt,'Verbosity'), Opt.Verbosity = 0; end
-global EasySpinLogLevel;
-EasySpinLogLevel = Opt.Verbosity;
+logmsg(Opt.Verbosity);
 
 % Initialize optional output structure
 Info = struct;
@@ -97,7 +96,7 @@ if computeNonEquiPops
   computeBoltzmann = false;
 else
   if isinf(Exp.Temperature)
-    error('If given, Params.Temperature must be a finite value.');
+    error('If given, Exp.Temperature must be a finite value.');
   end
   computeBoltzmann = ~isnan(Exp.Temperature);
 end
@@ -354,7 +353,7 @@ TRidx = u + (v-1)*nStates; % Indices into UPPER triangle.
 
 % Diagnostic display.
 logmsg(1,'  %d transitions selected',nTransitions);
-if EasySpinLogLevel>=3, disp(Transitions); end
+if logmsg>=3, disp(Transitions); end
 
 % Issue a warning if the resulting transition list is empty.
 if isempty(Transitions)
@@ -426,7 +425,7 @@ startTime = cputime;
 logstr = '';
 for iOri = 1:nOrientations
   
-  if EasySpinLogLevel>=1
+  if logmsg>=1
     if iOri>1
       remainingTime = (cputime-startTime)/(iOri-1)*(nOrientations-iOri+1);
       backspace = repmat(sprintf('\b'),1,numel(logstr));
@@ -581,7 +580,7 @@ Info.Selectivity = Selectivity;
 
 % Reshape arrays in the case of crystals with site splitting
 d = dbstack;
-saltCall = numel(d)>2 && strcmp(d(2).name,'salt');
+saltCall = numel(d)>1 && strcmp(d(2).name,'salt');
 if nSites>1 && ~saltCall
   siz = [nTransitions*nSites, numel(Pdat)/nTransitions/nSites];
   Pdat = reshape(Pdat,siz);

@@ -25,7 +25,7 @@
 %   - B:   cell array of all resonance fields [mT]
 %   - Int: transition intensities [MHz^2/mT^2]
 
-function varargout = resfields_eig(SpinSystem, Exp, Opt)
+function varargout = resfields_eig(Sys, Exp, Opt)
 
 if nargin==0, help(mfilename); return; end
 
@@ -54,22 +54,21 @@ if isempty(Opt)
   Opt = struct;
 end
 
-if ~isstruct(SpinSystem) || ~isstruct(Exp) || ~isstruct(Opt)
-  error('SpinSystem, Parameters and Options must be structures!');
+if ~isstruct(Sys) || ~isstruct(Exp) || ~isstruct(Opt)
+  error('The three inputs must be structures!');
 end
 
 % A global variable sets the level of log display. The global variable
 % is used in logmsg(), which does the log display.
 if ~isfield(Opt,'Verbosity'), Opt.Verbosity = 0; end
-global EasySpinLogLevel;
-EasySpinLogLevel = Opt.Verbosity;
+logmsg(Opt.Verbosity);
 
 % Mute warnings because of unavoidable division by zero.
 OldWarningState = warning('off');
 
 % Process SpinSystem structure.
 %===================================================================
-[SpinSystem,err] = validatespinsys(SpinSystem);
+[Sys,err] = validatespinsys(Sys);
 error(err);
 
 % Process Parameter structure.
@@ -90,19 +89,25 @@ DefaultExp.SampleRotation = [];
 
 Exp = adddefaults(Exp,DefaultExp);
 
-if isnan(Exp.mwFreq), error('Parameters.mwFreq missing!'); end
+if isnan(Exp.mwFreq), error('Exp.mwFreq missing!'); end
 
 if (diff(Exp.Range)<=0) || any(~isfinite(Exp.Range)) || ...
    ~isreal(Exp.Range) || any(Exp.Range<0) || (numel(Exp.Range)~=2)
-  error('Parameters.Range is not valid!');
+  error('Exp.Range is not valid!');
 end
 
 if isempty(Exp.mwMode), Exp.mwMode = 'perpendicular'; end
 
 ParallelMode = (2==parseoption(Exp,'mwMode',{'perpendicular','parallel'}));
 
-if ~isnan(Exp.Temperature)
-  warning('Thermal equilibrium populations not implemented. Parameters.Temperature is ignored!');
+% Thermal and non-thermal spin polarizations are not supported
+computeBoltzmannPopulations = ~isnan(Exp.Temperature) && ~isinf(Exp.Temperature);
+if computeBoltzmannPopulations
+  error('Thermal equilibrium populations (Exp.Temperature) not implemented.');
+end
+computeNonEquiPops = isfield(Sys,'initState') && ~isempty(Sys.initState);
+if computeNonEquiPops
+  error('Non-equilibrium populations (Sys.initState) not implemented.');
 end
 
 mwFreq = Exp.mwFreq*1e3;
@@ -141,10 +146,10 @@ logmsg(1,'  computing %s',msg);
 
 % Build Hamiltonian components.
 %===================================================================
-if iscell(SpinSystem)
-  [H0,mux,muy,muz] = deal(SpinSystem);
+if iscell(Sys)
+  [H0,mux,muy,muz] = deal(Sys);
 else
-  [H0,mux,muy,muz] = ham(SpinSystem);
+  [H0,mux,muy,muz] = ham(Sys);
 end
 
 % Build Liouville space operators.
@@ -229,7 +234,7 @@ for iOri = 1:nOrientations
       
       % Compute polarization
       Polarization = 1;
-      Polarization = Polarization/prod(2*SpinSystem.I+1);
+      Polarization = Polarization/prod(2*Sys.I+1);
       
       % Compute frequency-to-field domain conversion factor
       if computeFreq2Field

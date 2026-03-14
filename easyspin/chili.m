@@ -81,9 +81,7 @@ if nargin<3, Opt = struct; end
 if ~isfield(Opt,'Verbosity')
   Opt.Verbosity = 0; % print level
 end
-
-global EasySpinLogLevel
-EasySpinLogLevel = Opt.Verbosity;
+logmsg(Opt.Verbosity);
 
 %===============================================================================
 % Loop over components and isotopologues
@@ -568,8 +566,14 @@ if generalLiouvillian
     error('Opt.LiouvMethod=''general'' does not support spin exchange (Sys.Exchange).');
   end
 else
-  if Sys.nElectrons>1 || Sys.S~=1/2 || Sys.nNuclei>2
-    error('Opt.LiouvMethod=''fast'' does not work with this spin system.');
+  if Sys.nElectrons>1
+    error('Opt.LiouvMethod=''fast'' does not work with more than one electron spin.');
+  end
+  if Sys.S~=1/2
+    error('Opt.LiouvMethod=''fast'' does not work for S>1/2.');
+  end
+  if Sys.nNuclei>2
+    error('Opt.LiouvMethod=''fast'' does not work more than 2 nuclei in the spin system.');
   end
   if usePotential
     if ~oldStylePotential
@@ -1393,8 +1397,6 @@ if doPostConvolution
   spec_pc = garlic(pcSys,pcExp);
   spec_pc = spec_pc/sum(spec_pc);
   
-  EasySpinLogLevel = Opt.Verbosity; % re-set it, since garlic clears it
-  
   % Convolute SLE spectrum with isotropic spectrum
   spec = conv(spec,spec_pc,'same');
 end
@@ -1526,8 +1528,6 @@ end
 
 
 logmsg(1,'-------------------------------------------------------------------');
-
-clear global EasySpinLogLevel
 
 end
 %===============================================================================

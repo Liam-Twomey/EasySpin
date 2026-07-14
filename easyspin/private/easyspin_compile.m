@@ -1,7 +1,10 @@
 function easyspin_compile()
 
 disp('EasySpin compilation');
-
+if isOctave()
+	easyspin_octave_compile()
+	return 
+end
 % Determine directory containing mex source files
 %-------------------------------------------------------------------------------
 esPath = fileparts(which(mfilename));

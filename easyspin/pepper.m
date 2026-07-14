@@ -109,7 +109,7 @@ if ~isfield(Opt,'IsoCutoff'), Opt.IsoCutoff = 1e-3; end
 % Process Opt.separate
 if ~isfield(Opt,'separate'), Opt.separate = ''; end
 [separateOutput,err] = parseoption(Opt,'separate',{'','components','transitions','orientations','sites'});
-error(err);
+error(strvcat(err));
 
 summedOutput = separateOutput==1;
 separateComponentSpectra = separateOutput==2;
@@ -145,7 +145,10 @@ end
 %==================================================================
 
 % Now we can start simulating the spectrum
-logmsg(1,'=begin=pepper=====%s=================',char(datetime));
+if isOctave()
+	logmsg(1,'=begin=pepper=====%s=================',char(datestr(now(),'yyyy-mm-dd HH:MM:SS')));
+else
+	logmsg(1,'=begin=pepper=====%s=================',char(datetime));
 logmsg(2,'  log level %d',logmsg);
 logmsg(1,'-general-----------------------------------------------');
 
@@ -154,7 +157,7 @@ logmsg(1,'-general-----------------------------------------------');
 %=======================================================================
 
 [Sys,err] = validatespinsys(Sys);
-error(err);
+error(char(err));
 
 if any(Sys.n>1)
   error('pepper does not support sets of equivalent nuclei (Sys.n>1).');
@@ -485,10 +488,10 @@ Opt = adddefaults(Opt,DefaultOpt);
 
 if FieldSweep
   [Method,err] = parseoption(Opt,'Method',{'eig','matrix','perturb','perturb1','perturb2','hybrid'});
-  error(err);
+  error(char(err));
 else
   [Method,err] = parseoption(Opt,'Method',{'matrix','perturb','perturb1','perturb2','hybrid'});
-  error(err);
+  error(char(err));
   Method = Method + 10;
 end
 

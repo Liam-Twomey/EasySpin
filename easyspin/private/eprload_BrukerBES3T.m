@@ -19,7 +19,7 @@ end
 
 % Read descriptor file (contains key-value pairs)
 [Parameters,err] = readDSCfile([FullBaseName ParExtension]);
-error(err);
+error(char(err));
 
 % IKKF: Complex-data Flag
 % CPLX indicates complex data, REAL indicates real data.

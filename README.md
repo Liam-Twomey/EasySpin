@@ -6,6 +6,8 @@ EasySpin is a MATLAB-based toolbox for the simulation and data analysis in Elect
 
 To get a tested and packaged version of EasySpin, or to access the documentation, go to EasySpin's main site at [easyspin.org](https://easyspin.org).
 
+This branch has been adapted for use with [GNU Octave](octave.org), a free and open source program which implements the MATLAB syntax.
+
 ## Resources
 
 - **Homepage:** <https://easyspin.org>
@@ -30,3 +32,10 @@ The EasySpin repository is organized as follows:
 ## Documentation
 
 You can build a local copy of the documentation. See the [documentation](/releasing/README.md) in the `releasing` subfolder.
+
+## Changes made for the Octave branch
+Please see `octave.md` for reference info on what changes have been made vs. the MATLAB version, and for notable differences and quirks in working with Octave.
+
+This fork is based on version 6.0.12, and any core functions which require significant changes from the MATLAB branch may not be updated past this version.
+
+This effort to make EasySpin Octave-compatible is currently a WIP and is not functional.

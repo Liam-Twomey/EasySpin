@@ -6,7 +6,7 @@
 %   easyspinversioncheck(InstallInfo)
 %   easyspinversioncheck(InstallInfo, Opt)
 % 
-%   [UpdateAvailable, OnlineVersion] = easyspinversioncheckchecks
+%   [UpdateAvailable, OnlineVersion] = easyspinversioncheck
 %   [UpdateAvailable, OnlineVersion] = easyspinversioncheck(InstallInfo) 
 %   [UpdateAvailable, OnlineVersion] = easyspinversioncheck(InstallInfo, Opt)
 % 

@@ -1,4 +1,4 @@
-% easyspinupdate  Checks online for a new version and updateds if requested 
+% easyspinupdate  Checks online for a new version and updates if requested
 %
 % Possible calls:
 %   easyspinupdate           checks online for update and downloads and
@@ -120,11 +120,11 @@ newESPath = [Destination 'easyspin-' versionToGet filesep 'easyspin' filesep];
 if exist(newESPath,'dir')
   addpath(newESPath);
   savepath
-  msg = ['EasySpin was succesfully installed to ' newline newESPath newline 'and added to the MATLAB search paths.' newline];
-  msg = [msg 'For optimal perfomance, your should remove EasySpin installation (' oldPath ') from the MATLAB search paths and delete the folder from your system.']; 
+  msg = ['EasySpin was successfully installed to' newline newESPath newline 'and added to the MATLAB search paths.' newline];
+  msg = [msg 'For optimal performance, your should remove EasySpin installation (' oldPath ') from the MATLAB search paths and delete the folder from your system.']; 
   disp(msg);
 else
-  errMsg = ['EasySpin was succecsfully downloaded to ' newline newESPath newline];
+  errMsg = ['EasySpin was successfully downloaded to' newline newESPath newline];
   errMsg = [errMsg 'But adding it to the path failed. Please do so manually.'];
   error(errMsg);
 end

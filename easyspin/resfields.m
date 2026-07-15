@@ -547,169 +547,19 @@ logmsg(1,msg);
 % at very low fields.
 
 logmsg(1,'- Transition pre-selection');
-
-userTransitions = ~isempty(Opt.Transitions);
-if userTransitions
-
-  if ischar(Opt.Transitions)
-    if strcmp(Opt.Transitions,'all')
-      if isempty(Opt.nLevels)
-        nStates_ = prod(2*CoreSys.S+1)*prod(2*CoreSys.I+1);
-        if isfield(CoreSys,'L')
-          nStates_ = nStates_*prod(2*CoreSys.L+1);
-        end
-      else
-        nStates_ = Opt.nLevels;
-      end
-      logmsg(1,'  using all %d transitions',nStates_*(nStates_-1)/2);
-      Transitions = nchoosek(1:nStates_,2);
-      postSelectionThreshold = 0;
-    else
-      error('Options.Transitions must be ''all'' or a nx2 array of enery level indices.');
-    end
-  else
-    % User-specified list of transitions
-    logmsg(1,'  using %d user-specified transitions',size(Opt.Transitions,1));
-    % Guarantee that lower index comes first (gives later u < v).
-    if size(Opt.Transitions,2)~=2
-      error('Options.Transitions must be a nx2 array of energy level indices.');
-    end
-    Transitions = sort(Opt.Transitions,2);
-    rmv = any(Transitions>nLevels,2);
-    Transitions(rmv,:) = [];
-  end
-
-else  % Automatic transition pre-selection
-  
-  if preSelectionThreshold==0
-    logmsg(1,'  selection threshold is zero -> using all transitions');
-    maxTransitionRates = ones(nCore);
-  elseif CoreSys.nElectrons==1 && CoreSys.nNuclei==0 && ~any(CoreSys.L)
-    logmsg(1,'  one electron spin and no nuclei -> using all transitions');
-    maxTransitionRates = ones(nCore);
-  else
-    if nOrientations>1  % if powder or multiple orientations
-      % Set a coarse grid, independent of the Hamiltonian symmetry
-      logmsg(1,'  selection threshold %g',preSelectionThreshold);
-      logmsg(2,'  ## (selection threshold %g, grid size %d, grid symmetry %s)',...
-        preSelectionThreshold,Opt.TPSGridSize,Opt.TPSGridSymm);
-      TPSgrid = sphgrid(Opt.TPSGridSymm,Opt.TPSGridSize);
-      phi = TPSgrid.phi;
-      theta = TPSgrid.theta;
-    else  % single orientation
-      phi = angles_M2L(1);
-      theta = angles_M2L(2);
-    end
-    
-    % Prepare detection operators
-    if higherOrder
-      if Opt.Sparse
-        sp = 'sparse';
-        g1 = ham_ezho(CoreSys,[],sp,1);
-      else
-        sp = '';
-        g1 = ham_ezho(CoreSys,[],[],sp,1);
-      end
-      [g0{1},g0{2},g0{3}] = ham_ez(CoreSys,[],sp);
-      if Sys.nNuclei>0
-        [mu0n{1},mu0n{2},mu0n{3}] = ham_nz(CoreSys,[],sp);
-        for k = 1:3
-          g0{k} = g0{k} - mu0n{k};
-        end
-      end
-      ExM = g1{1}{1} + g0{1};
-      EyM = g1{1}{2} + g0{2};
-      EzM = g1{1}{3} + g0{3};
-    else
-      ExM = -kmuxM;
-      EyM = -kmuyM;
-      EzM = -kmuzM;
-    end
-    
-    % Pre-compute trigonometric functions
-    st = sin(theta);
-    ct = cos(theta);
-    sp = sin(phi);
-    cp = cos(phi);
-    centerB = mean(Exp.Range); % take field at center of scan range
-
-    % Calculate transition rates over all orientations (at fixed field)
-    maxTransitionRates = zeros(nCore);
-    for iOri = 1:numel(theta)
-      % Determine eigenvectors
-      if higherOrder
-        [Vecs,~] = gethamdata_hO(centerB,[st(iOri)/sqrt(2)*[1,1],ct(iOri)],CoreSys,Opt.Sparse,[],nLevels);
-      else
-        kmuzL = st(iOri)*(cp(iOri)*kmuxM + sp(iOri)*kmuyM) + ct(iOri)*kmuzM;
-        if Opt.Sparse
-          [Vecs,E] = eigs(kH0 - centerB*kmuzL,nCore);
-          [~,idx_] = sort(diag(E));
-          Vecs = Vecs(:,idx_);
-        else
-          [Vecs,~] = eig(kH0 - centerB*kmuzL);
-        end
-      end
-      % Calculate transition rate matrix and keep track of the maximum
-      ExyM = cp(iOri)*ExM + sp(iOri)*EyM;
-      if mwmode.parallelMode
-        EzL = st(iOri)*ExyM + ct(iOri)*EzM;
-        TransRate_ = abs(Vecs'*EzL*Vecs).^2;
-      else  % perpendicular
-        EyL = -sp(iOri)*ExM  + cp(iOri)*EyM;
-        ExL =  ct(iOri)*ExyM - st(iOri)*EzM;
-        TransRate_ = (abs(Vecs'*ExL*Vecs).^2 + abs(Vecs'*EyL*Vecs).^2)/2;
-      end
-      maxTransitionRates = max(maxTransitionRates,TransRate_);
-    end
-  end
-  
-  % Keep only upper triangular part
-  keepidx = logical(triu(ones(nCore),1));
-  % Remove nuclear transitions
-  if max(HFIStrength)<0.5 && preSelectionThreshold>0
-    nElStates_ = prod(2*CoreSys.S+1)*prod(2*CoreSys.L+1);
-    idxNuclearTransitions = logical(kron(eye(nElStates_),ones(nCore/nElStates_)));
-    keepidx = keepidx & ~idxNuclearTransitions;
-  end
-  maxTransitionRates(~keepidx) = [];
-
-  % Get indices of level pairs for all remaining transitions
-  [u,v] = find(keepidx);
-  Transitions = [u,v];
-  
-  % Sort transition rates in descending order and select most intense ones
-  [~,idx] = sort(maxTransitionRates,'descend');
-  thr = preSelectionThreshold*max(maxTransitionRates);
-  nTransitions = sum(maxTransitionRates>thr);
-  Transitions = Transitions(idx(1:nTransitions),:);
-
-  % Clear unused variables
-  clear Vecs E idx kmuzL ExM EyM EzM ExyM ExL EyL EzL
-  clear keepidx u v idxUpperTriangle idxNuclearTransitions
-  clear maxTransitionRates minTransitionRates idx
-  
+if higherOrder
+  [Transitions,u,v,nTransitions,Trans,postSelectionThreshold] = ...
+    p_transitionpreselection(Opt,CoreSys,nLevels,nCore,...
+                             preSelectionThreshold,postSelectionThreshold,...
+                             nOrientations,angles_M2L,mean(Exp.Range),...
+                             true,[],[],[],[],mwmode,HFIStrength);
+else
+  [Transitions,u,v,nTransitions,Trans,postSelectionThreshold] = ...
+    p_transitionpreselection(Opt,CoreSys,nLevels,nCore,...
+                             preSelectionThreshold,postSelectionThreshold,...
+                             nOrientations,angles_M2L,mean(Exp.Range),...
+                             false,kH0,kmuxM,kmuyM,kmuzM,mwmode,HFIStrength);
 end
-
-% Terminate if there is a problem with the transition list
-if isempty(Transitions)
-  error('No transitions selected! Decrease Opt.Threshold.');
-end
-if any(Transitions(:)>nCore)
-  error('Level index in Options.Transitions is out of range.');
-end
-
-% Compute indices and variables used later in the algorithm
-u = Transitions(:,1);
-v = Transitions(:,2);  % v > u
-nTransitions = length(u);
-upTRidx = u + (v-1)*nCore;  % indices into UPPER triangle
-Trans = upTRidx;  % single-number transition indices
-
-% Diagnostic display
-logmsg(1,'  %d transitions pre-selected',nTransitions);
-
-% Now, if the transitions were selected automatically, they are in order of
-% descending expected intensity. If user-specified, their order is unchanged.
 %===============================================================================
 
 
@@ -858,8 +708,9 @@ idxTr = [(1:nTransitions).'; Inf];
 %---------------------------------------------------------
 levelAccuracy = mwFreq*Opt.ModellingAccuracy;
 
-M = [2 -2 1 1; -3 3 -2 -1; 0 0 1 0; 1 0 0 0];
-ZeroRow = NaN(1,nOrientations);
+NaNRow = NaN(1,nOrientations);
+p_insertrow = @(A,idx) [A(1:idx-1,:); NaNRow; A(idx:end,:)];
+
 if higherOrder
   maxSlope = 0;
   for iOri = 1:nOrientations
@@ -913,6 +764,7 @@ for iOri = 1:nOrientations
   % xLab, yLab, zLab represented in the molecular frame M
   [xLab_M,yLab_M,zLab_M] = erot(angles_M2L(iOri,:),'rows');
   
+  % Build magnetic moment operators in lab frame (once per orientation)
   if ~higherOrder
     % zLab axis: external static field
     kmuzL = zLab_M(1)*kmuxM + zLab_M(2)*kmuyM + zLab_M(3)*kmuzM;
@@ -926,7 +778,25 @@ for iOri = 1:nOrientations
         kSzL{e} = zLab_M(1)*kSxM{e} + zLab_M(2)*kSyM{e} + zLab_M(3)*kSzM{e};
       end
     end
+  else
+    sp = '';
+    if Opt.Sparse, sp = 'sparse'; end
+    g1 = ham_ezho(CoreSys,[],[],sp,1);
+    [g0{1},g0{2},g0{3}] = ham_ez(CoreSys,[],sp);
+    if Sys.nNuclei>0
+      [mu0n{1},mu0n{2},mu0n{3}] = ham_nz(CoreSys,[],sp);
+      for k = 1:3
+        g0{k} = g0{k} - mu0n{k};
+      end
+    end
+    for n = 3:-1:1
+      kmuM{n} = -(g1{1}{n}+g0{n});
+    end
+    kmuzL = zLab_M(1)*kmuM{1} + zLab_M(2)*kmuM{2} + zLab_M(3)*kmuM{3};
+    kmuxL = xLab_M(1)*kmuM{1} + xLab_M(2)*kmuM{2} + xLab_M(3)*kmuM{3};
+    kmuyL = yLab_M(1)*kmuM{1} + yLab_M(2)*kmuM{2} + yLab_M(3)*kmuM{3};
   end
+
   if computeStrains
     LineWidthSquared = HStrain2*zLab_M.^2;
   end
@@ -947,114 +817,29 @@ for iOri = 1:nOrientations
     photoWeight = 1;
   end
   
-  %=============================================================================
   % Build cubic spline model of energy level diagram using iterative bisection
   %-----------------------------------------------------------------------------
-  
-  nSegments = 1;  % number of segments to start width
-  Bknots = linspace(Exp.Range(1),Exp.Range(2),nSegments+1);  % segments with equal width
-  
-  % Preallocations
-  vectors = cell(1,nSegments+1);  % eigenvectors
-  E = cell(1,nSegments+1);  % energies
-  dEdB = cell(1,nSegments+1);  % dE/dB
-  deltaE = cell(1,nSegments+1);  % transition energies for listed transitions
-  
-  % Calculate energies etc. at all segment boundaries (knots)
-  for s = 1:nSegments+1
-    if higherOrder
-      [vectors{s},E{s},dEdB{s},deltaE{s}] = gethamdata_hO(Bknots(s),zLab_M,CoreSys,Opt.Sparse,Trans,nLevels);
-    else
-      [vectors{s},E{s},dEdB{s},deltaE{s}] = gethamdata(Bknots(s),kH0,kmuzL,Trans,nLevels);
-    end
-    nDiagonalizations = nDiagonalizations + 1;
-  end
-  
-  % Iterative bisection to model energy level diagram to desired accuracy
-  converged = false(1,nSegments);
-  while ~all(converged) && nSegments<Opt.maxSegments
-    
-    s = find(~converged,1);  % find a segment that's not yet converged
-    dB = Bknots(s+1) - Bknots(s);
-    if E{s+1}(end)-E{s+1}(1) > mwFreq
-      if LoopFields
-        transitionPossible = abs((deltaE{s}+deltaE{s+1})/2-mwFreq) <= maxSlope*dB;
-      else
-        transitionPossible = (deltaE{s}-mwFreq).*(deltaE{s+1}-mwFreq) <= 0;
-      end
-    else
-      transitionPossible = false;
-    end
-    
-    % If transition within segment is not possible, mark segment as converged and move on
-    if ~any(transitionPossible)
-      converged(s) = true;
-      continue
-    end
-    
-    % If transition is possible, diagonalize at midpoint and compute error
-    newB = (Bknots(s)+Bknots(s+1))/2;
-    if higherOrder
-      [Ve,En,dEdBn,dEn] = gethamdata_hO(newB,zLab_M,CoreSys,Opt.Sparse,Trans,nLevels);
-    else
-      [Ve,En,dEdBn,dEn] = gethamdata(newB,kH0,kmuzL,Trans,nLevels);
-    end
-    nDiagonalizations = nDiagonalizations + 1;
-
-    % Convergence check - exclude levels that are not involved in resonances
-    include = false(1,nCore);
-    include([u(transitionPossible) v(transitionPossible)]) = true;
-    deviation = 2*((E{s}+E{s+1})/2 + dB/8*(dEdB{s}-dEdB{s+1}) - En);
-    deviation = abs(deviation(include));
-    converged_ = max(deviation) <= levelAccuracy;
-    
-    % Bisect segment by adding midpoint
-    Bknots = [Bknots(1:s) newB Bknots(s+1:end)];
-    E = [E(1:s) {En} E(s+1:end)];
-    vectors = [vectors(1:s) {Ve} vectors(s+1:end)];
-    dEdB = [dEdB(1:s) {dEdBn} dEdB(s+1:end)];
-    deltaE = [deltaE(1:s) {dEn} deltaE(s+1:end)];
-    nSegments = nSegments + 1;
-
-    % Mark the two new segments converged or not depending on error
-    converged = [converged(1:s-1) converged_ converged_ converged(s+1:end)];
-    
-  end
-  
-  if nSegments>=Opt.maxSegments
-    nMaxSegmentsReached = nMaxSegmentsReached + 1;
-    logmsg(2,'   segmentation terminated, %d segments, max number of segment reached',nSegments);
+  if higherOrder
+    getHamData = @(B) gethamdata_hO(B,zLab_M,CoreSys,Opt.Sparse,Trans,nLevels);
   else
-    logmsg(2,'   segmentation converged, %d segments',nSegments);
+    getHamData = @(B) gethamdata(B,kH0,kmuzL,Trans,nLevels);
   end
-  
-  
-  % Compute eigenvector cross products to determine how strongly eigenvectors
-  % change over a segment.
-  for s = nSegments:-1:1
-    %StateStability(:,s) = abs(diag(Vectors{s+1}'*Vectors{s}));  % slower
-    StateStability(:,s) = abs(sum(conj(vectors{s+1}).*vectors{s})).';
-  end
-
-  % Cubic polynomial coefficients of the entire spline model of the energy level diagram
-  dB = diff(Bknots);
-  SplineModelCoeffs = cell(1,nSegments);
-  for s = 1:nSegments
-    SplineModelCoeffs{s} = M*[E{s}; E{s+1}; dB(s)*dEdB{s}; dB(s)*dEdB{s+1}];
-  end
+  [Bknots,splineModelCoeffs,stateStability,dB,nSegments,vectors,nDiagonalizations,nMaxSegmentsReached] = ...
+    p_buildlevelmodel(Exp.Range,getHamData,u,v,nCore,mwFreq,levelAccuracy,maxSlope,...
+                      LoopFields,Opt.maxSegments,nDiagonalizations,nMaxSegmentsReached);
   
   iiTrans = 1;
-  for iTrans = 1:nTransitions % run over all level pairs
+  for iTrans = 1:nTransitions  % run over all level pairs
 
-    % Find first position of transition iTrans in idxTr.
+    % Find first position of transition iTrans in idxTr
     while idxTr(iiTrans)<iTrans, iiTrans=iiTrans+1; end
 
     % Loop over all field segments and compute resonance fields
-    %-----------------------------------------------------------
+    %---------------------------------------------------------------------------
     for s = 1:nSegments
 
       % Construct cubic polynomial coeffs of resonance function Ev-Eu-freq
-      coeffs = SplineModelCoeffs{s};
+      coeffs = splineModelCoeffs{s};
       Evpoly = coeffs(:,v(iTrans));
       Eupoly = coeffs(:,u(iTrans));
       dEpoly = Evpoly - Eupoly;
@@ -1065,27 +850,26 @@ for iOri = 1:nOrientations
 
       % Problem here: cubicsolve should only be called if a resonance
       % is possible. This can be determined as above using maxSlope etc.
-      % cubicsolve takes too long to find this out (esp. for LoopFields=1).
+      % cubicsolve takes too long to find this out (esp. for LoopFields==true).
       cubicZeros = cubicsolve(dEpoly,LoopFields);
-      if isempty(cubicZeros), continue, end
-
-      ResonanceFields = Bknots(s) + dB(s)*cubicZeros;
+      if isempty(cubicZeros), continue; end
+      resonanceFields = Bknots(s) + dB(s)*cubicZeros;
 
       % loop over all resonances for transition iTrans in the current segment
-      for iReson = 1:numel(ResonanceFields)
+      for iReson = 1:numel(resonanceFields)
 
         % Insert new row into data arrays if the current one is not for transition iTrans!!
         %-----------------------------------------------------------------------------------
         if idxTr(iiTrans)>iTrans
-          Pdat = [Pdat(1:iiTrans-1,:); ZeroRow; Pdat(iiTrans:end,:)];
+          Pdat = p_insertrow(Pdat,iiTrans);
           if computeIntensities
-            Idat = [Idat(1:iiTrans-1,:); ZeroRow; Idat(iiTrans:end,:)];
+            Idat = p_insertrow(Idat,iiTrans);
           end
           if computeStrains
-            Wdat = [Wdat(1:iiTrans-1,:); ZeroRow; Wdat(iiTrans:end,:)];
+            Wdat = p_insertrow(Wdat,iiTrans);
           end
           if computeGradient
-            Gdat = [Gdat(1:iiTrans-1,:); ZeroRow; Gdat(iiTrans:end,:)];
+            Gdat = p_insertrow(Gdat,iiTrans);
           end
           idxTr = [idxTr(1:iiTrans-1); iTrans; idxTr(iiTrans:end)];
           if nPerturbNuclei>0
@@ -1101,7 +885,7 @@ for iOri = 1:nOrientations
 
         % Update position data
         %------------------------------------------------
-        Pdat(iiTrans,iOri) = ResonanceFields(iReson);
+        Pdat(iiTrans,iOri) = resonanceFields(iReson);
 
         % Compute eigenvectors, eigenvalues and 1/g factor = 1/(dE/dB) if needed
         %--------------------------------------------------
@@ -1112,10 +896,10 @@ for iOri = 1:nOrientations
 
           % If eigenvectors change too much between knots, we have to
           % rediagonalize the Hamiltonian at the resonance field.
-          if any(StateStability(uv,s)<Opt.RediagLimit)
+          if any(stateStability(uv,s)<Opt.RediagLimit)
             nRediags = nRediags + 1;
             if higherOrder
-              [Vectors_,Energies] = gethamdata_hO(ResonanceFields(iReson),zLab_M,CoreSys,Opt.Sparse,Trans,nLevels);
+              [Vectors_,Energies] = gethamdata_hO(resonanceFields(iReson),zLab_M,CoreSys,Opt.Sparse,Trans,nLevels);
               if Opt.Sparse
                 [Energies,ind] = sort(diag(Energies));
                 Energies = diag(Energies);
@@ -1123,7 +907,7 @@ for iOri = 1:nOrientations
               end
             else
               if issparse(kH0)
-                [Vectors_,Energies] = eigs(kH0-ResonanceFields(iReson)*kmuzL,nLevels);
+                [Vectors_,Energies] = eigs(kH0-resonanceFields(iReson)*kmuzL,nLevels);
                 % A sort of workaround for diagonalization using eigs, the
                 % energies are not ordered which results in a miscalculation
                 % of mu
@@ -1133,7 +917,7 @@ for iOri = 1:nOrientations
                 
                 %[Vectors_,Energies] = eig(full(kF+ResonanceFields(iReson)*kGzL));
               else
-                [Vectors_,Energies] = eig(kH0-ResonanceFields(iReson)*kmuzL);
+                [Vectors_,Energies] = eig(kH0-resonanceFields(iReson)*kmuzL);
               end
               Energies = diag(Energies);
             end
@@ -1141,18 +925,20 @@ for iOri = 1:nOrientations
             V = Vectors_(:,uv(2));
             %Energies = diag(Energies);
             %V'*kGxL*U
-            logmsg(3,sprintf('   %d-%d: stabilities %f and %f ===> rediagonalization',uv,StateStability(uv,s)));
+            logmsg(3,sprintf('   %d-%d: stabilities %f and %f ===> rediagonalization',uv,stateStability(uv,s)));
           else
 
             z = cubicZeros(iReson);
 
-            Ua = vectors{s}(:,uv(1)); Ub = vectors{s+1}(:,uv(1));
+            Ua = vectors{s}(:,uv(1));
+            Ub = vectors{s+1}(:,uv(1));
             [~,idx] = max(abs(Ua));
             phase = Ua(idx)/Ub(idx);
             U = Ua*(1-z) + z*phase/abs(phase)*Ub;
             U = U/norm(U);
 
-            Va = vectors{s}(:,uv(2)); Vb = vectors{s+1}(:,uv(2));
+            Va = vectors{s}(:,uv(2));
+            Vb = vectors{s+1}(:,uv(2));
             [~,idx] = max(abs(Va));
             phase = Va(idx)/Vb(idx);
             V = Va*(1-z) + z*phase/abs(phase)*Vb;
@@ -1160,33 +946,10 @@ for iOri = 1:nOrientations
 
             if computeBoltzmannPopulations
               t = cubicZeros(iReson);
-              Energies = [t^3 t^2 t 1]*SplineModelCoeffs{s};
+              Energies = [t^3 t^2 t 1]*splineModelCoeffs{s};
             end
           end
 
-          if higherOrder
-            if Opt.Sparse
-              sp = 'sparse';
-            else
-              sp = '';
-            end
-            g1 = ham_ezho(CoreSys,[],[],sp,1);
-            [g0{1},g0{2},g0{3}] = ham_ez(CoreSys,[],sp);
-            if Sys.nNuclei>0
-              [mu0n{1},mu0n{2},mu0n{3}] = ham_nz(CoreSys,[],sp);
-              for k = 1:3
-                g0{k} = g0{k} - mu0n{k};
-              end
-            end
-            for n =3:-1:1
-              kmuM{n} = -(g1{1}{n}+g0{n});
-            end
-            % calculate lab-frame components
-            kmuzL = zLab_M(1)*kmuM{1} + zLab_M(2)*kmuM{2} + zLab_M(3)*kmuM{3};
-            kmuxL = xLab_M(1)*kmuM{1} + xLab_M(2)*kmuM{2} + xLab_M(3)*kmuM{3};
-            kmuyL = yLab_M(1)*kmuM{1} + yLab_M(2)*kmuM{2} + yLab_M(3)*kmuM{3};
-          end
-          
           % Compute dB/dE
           % dBdE is the general form of the famous 1/g factor
           % dBdE = (d(Ev-Eu)/dB)^(-1) = 1/(<v|dH/dB|v>-<u|dH/dB|u>)
@@ -1275,7 +1038,7 @@ for iOri = 1:nOrientations
         if computeGradient
           Gradient2 = real((V'-U')*kmuxL*(V+U)).^2 + real((V'-U')*kmuyL*(V+U)).^2;
           % dBdE proportionality not valid near looping field coalescences
-          Gdat(iiTrans,iOri) = dBdE * ResonanceFields(iReson) * sqrt(Gradient2);
+          Gdat(iiTrans,iOri) = dBdE * resonanceFields(iReson) * sqrt(Gradient2);
         end
         
         % Calculate width if requested
@@ -1334,7 +1097,7 @@ for iOri = 1:nOrientations
             end
             % Nuclear Zeeman and quadrupole (independent of S)
             if ~Opt.HybridOnlyHFI
-              Hc = Hquad{iiNuc} + ResonanceFields(iReson)*...
+              Hc = Hquad{iiNuc} + resonanceFields(iReson)*...
                 (zLab_M(1)*Hzeem(iiNuc).x + zLab_M(2)*Hzeem(iiNuc).y + zLab_M(3)*Hzeem(iiNuc).z);
               Hu = Hu + Hc;
               Hv = Hv + Hc;
@@ -1574,5 +1337,300 @@ if ~isempty(Wdat), Wdat = Wdat(idx,:); end
 % Arrange the output
 Output = {Pdat,Idat,Wdat,Transitions,Gdat};
 varargout = Output(1:max(nargout,1));
+
+end
+
+
+%===============================================================================
+function [Bknots,SplineModelCoeffs,StateStability,dB,nSegments,vectors,nDiagonalizations,nMaxSegmentsReached] = ...
+  p_buildlevelmodel(fieldRange,getHamData,u,v,nCore,mwFreq,levelAccuracy,maxSlope,...
+                    LoopFields,maxSegments,nDiagonalizations,nMaxSegmentsReached)
+% Build a cubic spline model of the energy level diagram via adaptive bisection.
+%
+% Inputs:
+%   fieldRange    [Bmin Bmax], field sweep range in mT
+%   getHamData    function handle @(B) -> [vectors,E,dEdB,deltaE]
+%                   abstracts away higherOrder vs. normal diagonalization
+%   u, v          column vectors of lower/upper level indices per transition
+%   nCore         number of states in the core system
+%   mwFreq        microwave frequency in MHz
+%   levelAccuracy convergence threshold in MHz
+%   maxSlope      maximum energy level slope in MHz/mT
+%   LoopFields    logical, true if looping transitions are possible
+%   maxSegments   maximum number of bisection segments allowed
+%   nDiagonalizations  running diagonalization counter (accumulated across orientations)
+%   nMaxSegmentsReached running counter of orientations that hit maxSegments
+%
+% Outputs:
+%   Bknots             field values at spline knots
+%   SplineModelCoeffs  cell array of 4xnLevels cubic polynomial coefficients per segment
+%   StateStability     nCore x nSegments overlap matrix between adjacent knot eigenvectors
+%   dB                 diff(Bknots), segment widths in mT
+%   nSegments          final number of segments
+%   nDiagonalizations  updated counter
+%   nMaxSegmentsReached updated counter
+
+% Cubic Hermite spline basis matrix (maps [y0 y1 dy0 dy1] to polynomial coefficients)
+M = [2 -2 1 1; -3 3 -2 -1; 0 0 1 0; 1 0 0 0];
+
+nSegments = 1;
+Bknots = linspace(fieldRange(1),fieldRange(2),nSegments+1);
+
+% Preallocations
+vectors = cell(1,nSegments+1);
+E       = cell(1,nSegments+1);
+dEdB    = cell(1,nSegments+1);
+deltaE  = cell(1,nSegments+1);
+
+% Evaluate energies, eigenvectors, and derivatives at initial knots
+for s = 1:nSegments+1
+  [vectors{s},E{s},dEdB{s},deltaE{s}] = getHamData(Bknots(s));
+  nDiagonalizations = nDiagonalizations + 1;
+end
+
+% Iterative bisection until all segments are converged or maxSegments is reached
+converged = false(1,nSegments);
+while ~all(converged) && nSegments<maxSegments
+
+  s = find(~converged,1);  % pick the first unconverged segment
+  dB = Bknots(s+1) - Bknots(s);
+
+  % Determine which transitions could resonate within this segment
+  if E{s+1}(end)-E{s+1}(1) > mwFreq
+    if LoopFields
+      transitionPossible = abs((deltaE{s}+deltaE{s+1})/2-mwFreq) <= maxSlope*dB;
+    else
+      transitionPossible = (deltaE{s}-mwFreq).*(deltaE{s+1}-mwFreq) <= 0;
+    end
+  else
+    transitionPossible = false;
+  end
+
+  % No resonance possible in this segment: mark converged and continue
+  if ~any(transitionPossible)
+    converged(s) = true;
+    continue
+  end
+
+  % Diagonalize at the midpoint and estimate the cubic interpolation error
+  newB = (Bknots(s)+Bknots(s+1))/2;
+  [Ve,En,dEdBn,dEn] = getHamData(newB);
+  nDiagonalizations = nDiagonalizations + 1;
+
+  % Convergence check: only consider levels involved in possible resonances
+  include = false(1,nCore);
+  include([u(transitionPossible); v(transitionPossible)]) = true;
+  deviation = 2*((E{s}+E{s+1})/2 + dB/8*(dEdB{s}-dEdB{s+1}) - En);
+  converged_ = max(abs(deviation(include))) <= levelAccuracy;
+
+  % Insert midpoint, splitting segment s into two
+  Bknots  = [Bknots(1:s)   newB   Bknots(s+1:end)];
+  E       = [E(1:s)       {En}    E(s+1:end)];
+  vectors = [vectors(1:s) {Ve}    vectors(s+1:end)];
+  dEdB    = [dEdB(1:s)    {dEdBn} dEdB(s+1:end)];
+  deltaE  = [deltaE(1:s)  {dEn}   deltaE(s+1:end)];
+  nSegments = nSegments + 1;
+  converged = [converged(1:s-1) converged_ converged_ converged(s+1:end)];
+
+end
+
+if nSegments>=maxSegments
+  nMaxSegmentsReached = nMaxSegmentsReached + 1;
+  logmsg(2,'   segmentation terminated, %d segments, max number of segment reached',nSegments);
+else
+  logmsg(2,'   segmentation converged, %d segments',nSegments);
+end
+
+% Eigenvector overlaps between adjacent knots (used to decide whether to rediagonalize)
+for s = nSegments:-1:1
+  StateStability(:,s) = abs(sum(conj(vectors{s+1}).*vectors{s})).';
+end
+
+% Cubic polynomial coefficients for each segment of the spline model
+dB = diff(Bknots);
+SplineModelCoeffs = cell(1,nSegments);
+for s = 1:nSegments
+  SplineModelCoeffs{s} = M*[E{s}; E{s+1}; dB(s)*dEdB{s}; dB(s)*dEdB{s+1}];
+end
+
+end
+
+%===============================================================================
+function [Transitions,u,v,nTransitions,Trans,postSelectionThreshold] = ...
+  p_transitionpreselection(Opt,coreSys,nLevels,nCore,...
+                           preSelectionThreshold,postSelectionThreshold,...
+                           nOrientations,angles_M2L,centerB,...
+                           higherOrder,kH0,kmuxM,kmuyM,kmuzM,mwmode,HFIStrength)
+% Build the list of transitions (level pairs) to compute resonance fields for.
+%
+% Inputs:
+%   Opt                    options struct (uses Transitions, nLevels, TPSGridSize,
+%                          TPSGridSymm, Sparse)
+%   coreSys                spin system struct (core system)
+%   nLevels                total number of energy levels
+%   nCore                  number of states in the core system
+%   preSelectionThreshold  intensity threshold for automatic pre-selection
+%   postSelectionThreshold intensity threshold for post-selection (may be overridden)
+%   nOrientations          number of orientations
+%   angles_M2L             nOri x 3 array of Euler angles (mol -> lab frame)
+%   centerB                center field (mT) for transition rate evaluation
+%   higherOrder            logical, true if higher-order Hamiltonian terms present
+%   kH0, kmuxM, kmuyM, kmuzM  field-independent Hamiltonian and magnetic moment
+%                          operators ([] when higherOrder is true)
+%   mwmode                 microwave excitation mode struct
+%   HFIStrength            hyperfine strengths relative to mwFreq
+
+userTransitions = ~isempty(Opt.Transitions);
+if userTransitions
+
+  if ischar(Opt.Transitions)
+    if strcmp(Opt.Transitions,'all')
+      if isempty(Opt.nLevels)
+        nStates_ = prod(2*coreSys.S+1)*prod(2*coreSys.I+1);
+        if isfield(coreSys,'L')
+          nStates_ = nStates_*prod(2*coreSys.L+1);
+        end
+      else
+        nStates_ = Opt.nLevels;
+      end
+      logmsg(1,'  using all %d transitions',nStates_*(nStates_-1)/2);
+      Transitions = nchoosek(1:nStates_,2);
+      postSelectionThreshold = 0;
+    else
+      error('Options.Transitions must be ''all'' or a nx2 array of enery level indices.');
+    end
+  else
+    % User-specified list of transitions
+    logmsg(1,'  using %d user-specified transitions',size(Opt.Transitions,1));
+    % Guarantee that lower index comes first (gives later u < v).
+    if size(Opt.Transitions,2)~=2
+      error('Options.Transitions must be a nx2 array of energy level indices.');
+    end
+    Transitions = sort(Opt.Transitions,2);
+    rmv = any(Transitions>nLevels,2);
+    Transitions(rmv,:) = [];
+  end
+
+else  % Automatic transition pre-selection
+
+  if preSelectionThreshold==0
+    logmsg(1,'  selection threshold is zero -> using all transitions');
+    maxTransitionRates = ones(nCore);
+  elseif coreSys.nElectrons==1 && coreSys.nNuclei==0 && ~any(coreSys.L)
+    logmsg(1,'  one electron spin and no nuclei -> using all transitions');
+    maxTransitionRates = ones(nCore);
+  else
+    if nOrientations>1  % powder or multiple orientations
+      % Set a coarse grid, independent of the Hamiltonian symmetry
+      logmsg(1,'  selection threshold %g',preSelectionThreshold);
+      logmsg(2,'  ## (selection threshold %g, grid size %d, grid symmetry %s)',...
+        preSelectionThreshold,Opt.TPSGridSize,Opt.TPSGridSymm);
+      TPSgrid = sphgrid(Opt.TPSGridSymm,Opt.TPSGridSize);
+      phi = TPSgrid.phi;
+      theta = TPSgrid.theta;
+    else  % single orientation
+      phi = angles_M2L(1);
+      theta = angles_M2L(2);
+    end
+
+    % Prepare detection operators
+    if higherOrder
+      if Opt.Sparse
+        sp = 'sparse';
+        g1 = ham_ezho(coreSys,[],sp,1);
+      else
+        sp = '';
+        g1 = ham_ezho(coreSys,[],[],sp,1);
+      end
+      [g0{1},g0{2},g0{3}] = ham_ez(coreSys,[],sp);
+      if coreSys.nNuclei>0
+        [mu0n{1},mu0n{2},mu0n{3}] = ham_nz(coreSys,[],sp);
+        for k = 1:3
+          g0{k} = g0{k} - mu0n{k};
+        end
+      end
+      ExM = g1{1}{1} + g0{1};
+      EyM = g1{1}{2} + g0{2};
+      EzM = g1{1}{3} + g0{3};
+    else
+      ExM = -kmuxM;
+      EyM = -kmuyM;
+      EzM = -kmuzM;
+    end
+
+    % Pre-compute trigonometric functions
+    st = sin(theta);
+    ct = cos(theta);
+    sp = sin(phi);
+    cp = cos(phi);
+
+    % Calculate transition rates over all orientations (at fixed center field)
+    maxTransitionRates = zeros(nCore);
+    for iOri = 1:numel(theta)
+      % Determine eigenvectors
+      if higherOrder
+        [Vecs,~] = gethamdata_hO(centerB,[st(iOri)/sqrt(2)*[1,1],ct(iOri)],coreSys,Opt.Sparse,[],nLevels);
+      else
+        kmuzL = st(iOri)*(cp(iOri)*kmuxM + sp(iOri)*kmuyM) + ct(iOri)*kmuzM;
+        if Opt.Sparse
+          [Vecs,E] = eigs(kH0 - centerB*kmuzL,nCore);
+          [~,idx_] = sort(diag(E));
+          Vecs = Vecs(:,idx_);
+        else
+          [Vecs,~] = eig(kH0 - centerB*kmuzL);
+        end
+      end
+      % Calculate transition rate matrix and accumulate maximum
+      ExyM = cp(iOri)*ExM + sp(iOri)*EyM;
+      if mwmode.parallelMode
+        EzL = st(iOri)*ExyM + ct(iOri)*EzM;
+        TransRate_ = abs(Vecs'*EzL*Vecs).^2;
+      else  % perpendicular
+        EyL = -sp(iOri)*ExM  + cp(iOri)*EyM;
+        ExL =  ct(iOri)*ExyM - st(iOri)*EzM;
+        TransRate_ = (abs(Vecs'*ExL*Vecs).^2 + abs(Vecs'*EyL*Vecs).^2)/2;
+      end
+      maxTransitionRates = max(maxTransitionRates,TransRate_);
+    end
+  end
+
+  % Keep only upper triangular part
+  keepidx = logical(triu(ones(nCore),1));
+  % Remove nuclear transitions
+  if max(HFIStrength)<0.5 && preSelectionThreshold>0
+    nElStates_ = prod(2*coreSys.S+1)*prod(2*coreSys.L+1);
+    idxNuclearTransitions = logical(kron(eye(nElStates_),ones(nCore/nElStates_)));
+    keepidx = keepidx & ~idxNuclearTransitions;
+  end
+  maxTransitionRates(~keepidx) = [];
+
+  % Get indices of level pairs for all remaining transitions
+  [u,v] = find(keepidx);
+  Transitions = [u,v];
+
+  % Sort in descending order of transition rate and keep above threshold
+  [~,idx] = sort(maxTransitionRates,'descend');
+  thr = preSelectionThreshold*max(maxTransitionRates);
+  nTransitions = sum(maxTransitionRates>thr);
+  Transitions = Transitions(idx(1:nTransitions),:);
+
+end
+
+% Validate the transition list
+if isempty(Transitions)
+  error('No transitions selected! Decrease Opt.Threshold.');
+end
+if any(Transitions(:)>nCore)
+  error('Level index in Options.Transitions is out of range.');
+end
+
+% Derive index vectors used by the main algorithm
+u = Transitions(:,1);
+v = Transitions(:,2);  % v > u
+nTransitions = length(u);
+upTRidx = u + (v-1)*nCore;  % indices into UPPER triangle
+Trans = upTRidx;  % single-number transition indices
+
+logmsg(1,'  %d transitions pre-selected',nTransitions);
 
 end

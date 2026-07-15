@@ -10,7 +10,7 @@
 %      (j1,j2,m1,m2|j1,j2,j,m)
 %
 %   involved in the coupling of two angular momenta j1 and j2 to
-%   resultant angular momemtum j.
+%   resultant angular momentum j.
 %
 %   j1,j2,m1,m2 are the quantum number for the uncoupled representation,
 %   and j1,j2,j,m are the quantum numbers for the coupled representation.

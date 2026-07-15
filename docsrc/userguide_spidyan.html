@@ -188,7 +188,7 @@ Exp.Sequence = {LinearChirp};
 </pre>
 
 <p>
-According to <a class="esf" href="pulse.html">pulse</a>, this gives a chirp pulse with a length of 200 ns and a bandwidth of of 100 MHz, centered around the carrier frequency <code>Exp.mwFreq</code>.
+According to <a class="esf" href="pulse.html">pulse</a>, this gives a chirp pulse with a length of 200 ns and a bandwidth of 100 MHz, centered around the carrier frequency <code>Exp.mwFreq</code>.
 To ensure a well-defined excitation profile in the frequency domain, the edges in the time domain are smoothed with a quarter sine, which has a length of 30 ns.
 
 <p>
@@ -705,7 +705,7 @@ Chirp180.Flip = pi;                 % flip angle, rad
 Chirp180.Frequency = [-120 120];    % excitation band, GHz
 </pre>
 
-Next we set build the pulse sequence, set field and carrierfrequency and set up detection: 
+Next we build the pulse sequence, set field and carrierfrequency and set up detection: 
 
 <pre class="matlab">
 tau = 0.5;  % &mu;s
@@ -881,7 +881,7 @@ This removes artifacts at the beginning and end of the time traces that are intr
 <p>
 <i>&Scirc;</i><sub>+</sub> and <i>&Scirc;</i><sub>-</sub> are not Hermitian operators.
 Hence, if you use <i>&Scirc;</i><sub>+</sub> as detection operator, the signal that is returned will in fact correspond to &langle;<i>&Scirc;</i><sub>-</sub>&rangle;.
-The real part of the signal (<i>&Scirc;<sub>x</sub></i>) is nof affected by this. 
+The real part of the signal (<i>&Scirc;<sub>x</sub></i>) is not affected by this. 
 But if your data processing involves the imaginary part of the signal and you encounter frequencies with a wrong sign, you might want to consider using <i>&Scirc;</i><sub>-</sub> as detection operator instead.
 
 <p>

@@ -20,10 +20,10 @@ Opt.Method = 'perturb';
 if (opt.Display)
   if ~isempty(olddata)
     subplot(4,1,[1 2 3]);
-    h = plot(x,olddata.y/max(olddata.y),'k',x,y/max(y),'r');
+    plot(x,olddata.y/max(olddata.y),'k',x,y/max(y),'r');
     legend('old','new');
     subplot(4,1,4);
-    plot(x,y-olddata.y);
+    plot(x,y/max(y)-olddata.y/max(olddata.y));
   else
     plot(x,y);
   end

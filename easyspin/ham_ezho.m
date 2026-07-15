@@ -21,7 +21,7 @@
 %
 %   Input:
 %   - SpinSystem: Spin system structure.
-%   - B: Magnetic field vector, in milliTesla. If B is ommited zero field
+%   - B: Magnetic field vector, in milliTesla. If B is omitted zero field
 %   is used (for single output).
 %   - Spins: Vector of spin numbers.  If Spins is omitted,
 %     all electron spins are included.

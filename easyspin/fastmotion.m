@@ -22,7 +22,7 @@
 %      Q      principal values of Q tensor [MHz]
 %   Field     center magnetic field [mT]
 %   tcorr     isotropic rotational correlation time [seconds]
-%   domain    'feield' or 'freq', for linewidths
+%   domain    'field' or 'freq', for linewidths
 %
 %   lw        all FWHM line widths [mT or MHz]
 %   mI        mI quantum numbers for the lines, one line per row

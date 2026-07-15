@@ -30,19 +30,28 @@ if isempty(IsotopeList)
   %disp('Loading nuclear isotope database...');
   % Determine data file name
   esPath = fileparts(which(mfilename));
-  DataFile = [esPath filesep 'private' filesep 'isotopedata.txt'];
-  if ~exist(DataFile,'file')
-    error('Could not open nuclear data file %s',DataFile);
+  dataFileName = 'isotopedata.txt';
+  dataFileName = [esPath filesep 'private' filesep dataFileName];
+  if ~exist(dataFileName,'file')
+    error('Could not open nuclear data file %s',dataFileName);
   end
   
-  % Load data file
-  fh = fopen(DataFile);
+  % Load data from file
+  fh = fopen(dataFileName);
   C = textscan(fh,'%f %f %s %s %s %f %f %f %f','commentstyle','%');
   fclose(fh);
-
   [IsotopeList.Protons,IsotopeList.Nucleons,IsotopeList.Radioactive,...
    IsotopeList.Element,IsotopeList.Name,IsotopeList.Spins,...
-   IsotopeList.gns,IsotopeList.Abundances,IsotopeList.qms] = C{:};
+   magmom,IsotopeList.Abundances,IsotopeList.qms] = C{:};
+
+  % Nuclear g factors: Infer from the 1H entry whether gn or gn*I is listed in
+  % the data file. If gn*I is listed, then divide out I.
+  IsotopeList.gns = magmom;
+  if magmom(1)<5
+    nzidx = IsotopeList.Spins~=0;
+    IsotopeList.gns(nzidx) = magmom(nzidx)./IsotopeList.Spins(nzidx);
+  end
+
   for k = 1:numel(IsotopeList.Spins)
     IsotopeList.Symbols{k} = sprintf('%d%s',IsotopeList.Nucleons(k),IsotopeList.Element{k});
   end
@@ -62,7 +71,7 @@ if nargin==0
 end
 
 if iscell(Isotopes)
-  if numel(Isotopes)==1
+  if isscalar(Isotopes)
     Isotopes = Isotopes{1};
   end
 end

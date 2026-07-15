@@ -4,8 +4,8 @@
 %
 %   Returns the natural abundance w of one or
 %   several nuclei, as a number between 0
-%   (not occuring naturally) and 1 (100%,
-%   the only occuring isotope of that element).
+%   (not occurring naturally) and 1 (100%,
+%   the only occurring isotope of that element).
 %
 %   Isotopes is a string specifying the
 %   nucleus, e.g. '1H', '13C', '63Cu', '191Ir'.

@@ -149,6 +149,7 @@ if isOctave()
 	logmsg(1,'=begin=pepper=====%s=================',char(datestr(now(),'yyyy-mm-dd HH:MM:SS')));
 else
 	logmsg(1,'=begin=pepper=====%s=================',char(datetime));
+end
 logmsg(2,'  log level %d',logmsg);
 logmsg(1,'-general-----------------------------------------------');
 
